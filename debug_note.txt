@@ -1,0 +1,15 @@
+nasm -f elf -g -F dwarf -o name.o name.asm
+ld -m elf_i386 -o name name.o
+
+gdb name
+b x -> create breakpoint at x
+run
+
+type layout src to get gdb to show you your source code as it is executed.
+
+type info reg to show register contents
+
+step, next, break, and continue do what you expect.
+
+print (int) variable
+info address variable
