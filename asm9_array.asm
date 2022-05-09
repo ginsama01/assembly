@@ -1,3 +1,10 @@
+; Compile with nasm32 and ld linker
+; Sample input
+; 6777 7117 6627 12664 8818
+; Max number: 
+; 12664
+; Min number: 
+; 6627
 SYS_EXIT    equ 1
 SYS_READ    equ 3
 SYS_WRITE   equ 4
