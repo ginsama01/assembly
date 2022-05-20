@@ -10,31 +10,30 @@ STDIN       equ 0
 STDOUT      equ 1
 
 section .data
+    ELFHeaderMsg    db  "ELF Header:", 0xA, 0xD
+    MagicMsg        db  "   Magic:  "
 
 section .bss
     filename        resb 32
     f_input         resb 32
-    stat            resb 144
+    stat            resb 92
     file            resb 1000000
+    hex             resb 2
 
 struc STAT
-    .st_dev         resq 1
-    .st_ino         resq 1
-    .st_nlink       resq 1
-    .st_mode        resd 1
-    .st_uid         resd 1
-    .st_gid         resd 1
-    .pad0           resb 4
-    .st_rdev        resq 1
-    .st_size        resq 1
-    .st_blksize     resq 1
-    .st_blocks      resq 1
-    .st_atime       resq 1
-    .st_atime_nsec  resq 1
-    .st_mtime       resq 1
-    .st_mtime_nsec  resq 1
-    .st_ctime       resq 1
-    .st_ctime_nsec  resq 1
+    .st_dev         resb 8
+    .st_ino         resb 8
+    .st_mode        resb 4
+    .st_nlink       resb 8
+    .st_uid         resb 4
+    .st_gid         resb 4
+    .st_rdev        resb 8
+    .st_size        resb 8
+    .st_blksize     resb 8
+    .st_blocks      resb 8
+    .st_atime       resb 8
+    .st_mtime       resb 8
+    .st_ctime       resb 8
 endstruc
     
 struc e_ident
@@ -96,10 +95,66 @@ _start:
     mov edx, [stat + STAT.st_size]
     int 0x80
 
-    mov eax, SYS_WRITE
-    mov ebx, STDOUT
-    mov ecx, file
-    mov edx, [stat + STAT.st_size]
+    ; mov eax, SYS_WRITE
+    ; mov ebx, STDOUT
+    ; mov ecx, file
+    ; mov edx, [stat + STAT.st_size]
+    ; int 0x80
+
+    ; check elf file
+    mov eax, [file]
+    cmp eax, 0x464c457f
+    jne exit
+
+    ; print elf header
+    mov ecx, ELFHeaderMsg
+    call printStr
+
+    mov ecx, MagicMsg
+    call printStr
+
+    xor eax, eax
+    mov al, [file]
+    call printHexByte
+
+
+exit:
+    mov eax, SYS_EXIT
+    xor ebx, ebx
     int 0x80
 
 
+strlen:
+    xor eax, eax
+    mov edi, ecx
+    strlen_loop:
+        cmp byte [edi], 0
+        je strlen_done
+        inc edi
+        inc eax
+        jmp strlen_loop
+
+    strlen_done:
+        ret
+
+printStr:
+    call strlen
+    mov edx, eax
+    mov eax, SYS_WRITE
+    mov ebx, STDOUT
+    int 0x80
+    ret
+
+decimalToHex:
+    cmp al, 0
+    je decimalToHex_done
+    push eax
+    div ax, 16
+    cmp ah, 10
+    
+    decimalToHex_done:
+        ret
+
+printHexByte:
+    
+        
