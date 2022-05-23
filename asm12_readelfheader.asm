@@ -10,8 +10,62 @@ STDIN       equ 0
 STDOUT      equ 1
 
 section .data
-    ELFHeaderMsg    db  "ELF Header:", 0xA, 0xD
-    MagicMsg        db  "   Magic:  "
+    space               db  " ", 0x0
+    newline             db  0xA, 0x0
+
+    ElfHeaderMsg        db  "ELF Header:", 0xA, 0x0
+    ElfMagicMsg         db  "   Magic:  ", 0x0
+    
+    ElfClassMsg         db  "   Class:                                  ", 0x0
+    ElfClass32Msg       db  "ELF32", 0xA, 0x0
+    ElfClass64Msg       db  "ELF64", 0xA, 0x0
+    ElfClassNone        db  "Invalid class", 0xA, 0x0
+
+    ElfDataMsg          db  "   Data:                                   ", 0x0
+    ElfDataLSBMsg       db  "2's complement, little endian", 0xA, 0x0
+    ElfDataMSBMsg       db  "2's complement, big endian", 0xA, 0x0
+    ElfDataNone         db  "Invalid data encoding", 0xA, 0x0
+
+    ElfVersionMsg       db  "   Version:                                ", 0x0
+    ElfVersionCurrentMsg   db  "1 (current)", 0xA, 0x0
+    ElfVersionNoneMsg   db  "0 (invalid)", 0xA, 0x0
+
+    OSstr:
+        dq 0
+        db "UNIX - System V", 0Ah, 0
+        dq 1
+        db "UNIX - HP-UX", 0Ah, 0
+        dq 2
+        db "UNIX - NetBSD", 0Ah, 0
+        dq 3
+        db "UNIX - GNU", 0Ah, 0
+        dq 6
+        db "UNIX - Solaris", 0Ah, 0
+        dq 7
+        db "UNIX - AIX", 0Ah, 0
+        dq 8
+        db "UNIX - IRIX", 0Ah, 0
+        dq 9
+        db "UNIX - FreeBSD", 0Ah, 0
+        dq 19
+        db "UNIX - TRU64", 0Ah, 0
+        dq 11
+        db "Novell - Modesto", 0Ah, 0
+        dq 12
+        db "UNIX - OpenBSD", 0Ah, 0
+        dq 13
+        db "VMS - OpenVMS", 0Ah, 0
+        dq 14
+        db "HP - Non-Stop Kernel", 0Ah, 0
+        dq 15
+        db "AROS", 0Ah, 0
+        dq 16
+        db "FenixOS", 0Ah, 0
+        dq 17
+        db "Nuxi CloudABI", 0Ah, 0
+        dq 18
+        db "Stratus Technologies OpenVOS", 0Ah, 0
+        dq -1
 
 section .bss
     filename        resb 32
@@ -62,6 +116,22 @@ struc ELF32_Ehdr
     .e_shstrndx     resw 1
 endstruc
 
+struc ELF64_Ehdr
+    .e_ident        resb 16
+    .e_type         resw 1
+    .e_machine      resw 1
+    .e_version      resd 1
+    .e_entry        resq 1
+    .e_phoff        resq 1
+    .e_shoff        resq 1
+    .e_flags        resd 1
+    .e_ehsize       resw 1
+    .e_phentsize    resw 1
+    .e_phnum        resw 1
+    .e_shentsize    resw 1
+    .e_shnum        resw 1
+    .e_shstrndx     resw 1
+endstruc
 
 section .text
     global _start
@@ -107,16 +177,92 @@ _start:
     jne exit
 
     ; print elf header
-    mov ecx, ELFHeaderMsg
+    mov ecx, ElfHeaderMsg
     call printStr
 
-    mov ecx, MagicMsg
+    ; print magic
+    mov ecx, ElfMagicMsg
     call printStr
 
+    xor ecx, ecx
+
+magicloop:
     xor eax, eax
-    mov al, [file]
+    mov al, [file + ecx]
+    push ecx
     call printHexByte
+    mov ecx, space
+    call printStr
+    pop ecx
+    inc ecx
+    cmp ecx, 16
+    je magicloop_print
+    jmp magicloop
 
+    magicloop_print:
+        mov ecx, newline
+        call printStr
+
+elf_class:
+    ; print class
+    mov ecx, ElfClassMsg
+    call printStr
+
+    cmp byte [file + e_ident.EI_CLASS], 1
+    je elf_class_32
+    cmp byte [file + e_ident.EI_CLASS], 2
+    je elf_class_64
+    mov ecx, ElfClassNone
+    jmp elf_class_print
+
+    elf_class_32:
+        mov ecx, ElfClass32Msg
+        jmp elf_class_print
+
+    elf_class_64:
+        mov ecx, ElfClass64Msg
+
+    elf_class_print:
+        call printStr
+
+elf_data:
+    ; print data
+    mov ecx, ElfDataMsg
+    call printStr
+
+    cmp byte [file + e_ident.EI_DATA], 1
+    je elf_data_lsb
+    cmp byte [file + e_ident.EI_DATA], 2
+    je elf_data_msb
+    mov ecx, ElfDataNone
+    jmp elf_data_print
+
+    elf_data_lsb:
+        mov ecx, ElfDataLSBMsg
+        jmp elf_data_print
+    
+    elf_data_msb:
+        mov ecx, ElfDataMSBMsg
+
+    elf_data_print:
+        call printStr
+
+elf_version:
+    ; print version
+    mov ecx, ElfVersionMsg
+    call printStr
+
+    cmp byte [file + e_ident.EI_VERSION], 1
+    je elf_version_current
+    mov ecx, ElfVersionNoneMsg
+    jmp elf_version_print
+
+    elf_version_current:
+        mov ecx, ElfVersionCurrentMsg
+        jmp elf_version_print
+
+    elf_version_print:
+        call printStr
 
 exit:
     mov eax, SYS_EXIT
@@ -146,15 +292,35 @@ printStr:
     ret
 
 decimalToHex:
-    cmp al, 0
-    je decimalToHex_done
-    push eax
-    div ax, 16
-    cmp ah, 10
-    
-    decimalToHex_done:
+    mov dl, 16
+    div dl
+    mov ebx, hex
+    add al, 48
+    cmp al, 58
+    jae addToHexAl
+
+    contAfterAl:
+        mov [ebx], al
+        inc ebx
+        add ah, 0x30
+        cmp ah, 58
+        jae addToHexAh
+
+    contAfterAh:
+        mov [ebx], ah
         ret
 
-printHexByte:
+    addToHexAl:
+        add al, 39
+        jmp contAfterAl
     
+    addToHexAh:
+        add ah, 39
+        jmp contAfterAh
+
+printHexByte:
+    call decimalToHex
+    mov ecx, hex
+    call printStr
+    ret
         
