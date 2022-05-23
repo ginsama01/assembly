@@ -799,12 +799,13 @@ struc STAT
 endstruc
     
 struc e_ident
-	.EI_MAG		resb 4	; ELF "magic number" (0x7f, 'ELF')
-	.EI_CLASS	resb 1	; file's class, or capacity
-	.EI_DATA	resb 1	; data encoding of the cpu-specific data
-	.EI_VERSION	resb 1	; ELF header version number (set to EV_CURRENT)
-	.EI_PAD		resb 1	; marks the beginning of the unused bytes
-	.EI_NIDENT	resb 8	; unused bytes in e_ident
+	.EI_MAG		    resb 4	; ELF "magic number" (0x7f, 'ELF')
+	.EI_CLASS	    resb 1	; file's class, or capacity
+	.EI_DATA	    resb 1	; data encoding of the cpu-specific data
+	.EI_VERSION	    resb 1	; ELF header version number (set to EV_CURRENT)
+    .EI_OSABI       resb 1
+    .EI_ABIVERSION  resb 1
+	.EI_PAD		    resb 7	; marks the beginning of the unused bytes
 endstruc
 
 struc ELF32_Ehdr
