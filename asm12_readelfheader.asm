@@ -213,6 +213,8 @@ section .data
     newline             db  0xA, 0x0
     byteifmsg           db  " (bytes into file)", 0xA, 0x0
     bytemsg             db  " (bytes)", 0xA, 0x0
+    seperate            db  " | ", 0x0
+    faketab             db  "   ", 0x0
 
     ElfHeaderMsg        db  "ELF Header:", 0xA, 0x0
     ElfMagicMsg         db  "   Magic:  ", 0x0
@@ -267,6 +269,8 @@ section .data
     ElfSHeaderIndex     db  "   Section header string table index:      ", 0x0
 
     SecHeaderMsg        db  "Section Headers:", 0xA, 0x0
+    SectionStr	db '  [Nr] | Name | Type | Addr | Off | Size | ES | Flg | Lk | Inf | Al', 0xA, 0
+    ProgramStr	db '  Type | Offset | VirtAddr | PhysAddr | FileSiz | MemSiz | Flg | Align', 0xA, 0
 
     ElfOSABIStr:
         dd 0
@@ -689,6 +693,47 @@ section .data
         db "Alpha", 0xA, 0
         dd -1
 
+    SecTypeStr:
+        dd 0x0
+        db "SHT_NULL", 0
+        dd 0x1
+        db "SHT_PROGBITS", 0
+        dd 0x2
+        db "SHT_SYMTAB", 0
+        dd 0x3
+        db "SHT_STRTAB", 0
+        dd 0x4
+        db "SHT_RELA", 0
+        dd 0x5
+        db "SHT_HASH", 0
+        dd 0x6
+        db "SHT_DYNAMIC", 0
+        dd 0x7
+        db "SHT_NOTE", 0
+        dd 0x8
+        db "SHT_NOBITS", 0
+        dd 0x9
+        db "SHT_REL", 0
+        dd 0x0A
+        db "SHT_SHLIB", 0
+        dd 0x0B
+        db "SHT_DYNSYM", 0
+        dd 0x0E
+        db "SHT_INIT_ARRAY", 0
+        dd 0x0F
+        db "SHT_FINI_ARRAY", 0
+        dd 0x10
+        db "SHT_PREINIT_ARRAY", 0
+        dd 0x11
+        db "SHT_GROUP", 0
+        dd 0x12
+        db "SHT_SYMTAB_SHNDX", 0
+        dd 0x13
+        db "SHT_NUM", 0
+        dd 0x60000000
+        db "SHT_LOOS", 0
+        dd -1
+        
 section .bss
     filename        resb 32
     f_input         resb 32
@@ -696,6 +741,13 @@ section .bss
     file            resb 1000000
     hex             resb 8
     numstr          resb 12
+    
+    sectionHdr      resb 4
+    secPoint        resb 4
+    shentsize       resb 2
+    shnum           resb 2
+    shstrtab        resb 4
+    tmp             resb 4
 
 struc STAT
     .st_dev         resb 8
@@ -740,6 +792,18 @@ struc ELF32_Ehdr
     .e_shstrndx     resw 1
 endstruc
 
+struc ELF32_Shdr;
+    .sh_name        resd 1
+    .sh_type        resd 1
+    .sh_flags       resd 1
+    .sh_addr        resd 1
+    .sh_offset      resd 1
+    .sh_size        resd 1
+    .sh_link        resd 1
+    .sh_info        resd 1
+    .sh_addralign   resd 1
+    .sh_entsize     resd 1
+endstruc
 
 section .text
     global _start
@@ -1080,13 +1144,87 @@ elf_sectionheaderindex:
     mov ecx, newline
     call printStr
 
-    ;-------------------------------------------------------------------------
+;-------------------------------------------------------------------------
+
+section_header:
     ; print section header
     mov ecx, newline
     call printStr
 
     mov ecx, SecHeaderMsg
     call printStr
+
+    mov ecx, SectionStr
+    call printStr
+
+    mov eax, [file + ELF32_Ehdr.e_shoff]
+    mov ebx, file
+    add ebx, eax
+    mov [sectionHdr], ebx
+
+    mov ax, [file + ELF32_Ehdr.e_shentsize]
+    mov [shentsize], ax
+
+    mov ax, [file + ELF32_Ehdr.e_shnum]
+    mov [shnum], ax
+
+    xor eax, eax
+    mov ax, [file + ELF32_Ehdr.e_shstrndx]
+    mov bx, word [shentsize]
+    mul bx
+    add eax, [sectionHdr]
+    mov ebx, [eax + ELF32_Shdr.sh_offset]
+
+    mov [shstrtab], ebx
+    mov dword [tmp], 0
+
+section_loop:
+    xor eax, eax
+    mov ax, [shnum]
+    cmp dword [tmp], eax
+    jae program_header
+
+    mov eax, [tmp]
+    mov bx, word [shentsize]
+    mul bx
+    add eax, [sectionHdr]
+    mov [secPoint], eax
+
+    mov ecx, faketab
+    call printStr
+
+    section_nr:
+        ; print section nr
+        mov eax, [tmp]
+        call printNumber
+
+        mov ecx, seperate
+        call printStr
+
+    section_name:
+        ; print section name
+        mov eax, [secPoint]
+        mov ecx, [eax + ELF32_Shdr.sh_name]
+        add ecx, [shstrtab]
+        add ecx, file
+        call printStr
+
+        mov ecx, seperate
+        call printStr
+
+    section_type:
+        ; print section type
+        mov eax, [secPoint]
+        mov edi, [eax + ELF32_Shdr.sh_type]
+        add ecx, SecTypeStr
+        xor eax, eax
+        call findInArray
+
+        mov ecx, seperate
+        call printStr
+
+
+program_header:
 
 exit:
     mov eax, SYS_EXIT
