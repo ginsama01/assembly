@@ -270,6 +270,8 @@ section .data
 
     SecHeaderMsg        db  "Section Headers:", 0xA, 0x0
     SectionStr	db '  [Nr] | Name | Type | Addr | Off | Size | ES | Flg | Lk | Inf | Al', 0xA, 0
+    SecTypeNoneMsg      db  "INVALID", 0x0
+    SecFlagNoneMsg      db  " ", 0x0
     ProgramStr	db '  Type | Offset | VirtAddr | PhysAddr | FileSiz | MemSiz | Flg | Align', 0xA, 0
 
     ElfOSABIStr:
@@ -732,6 +734,37 @@ section .data
         db "SHT_NUM", 0
         dd 0x60000000
         db "SHT_LOOS", 0
+        dd -1
+
+    SecFlagStr:
+        dd 0x1	
+        db "SHF_WRITE", 0
+        dd 0x2	
+        db "SHF_ALLOC", 0
+        dd 0x4	
+        db "SHF_EXECINSTR", 0
+        dd 0x10	
+        db "SHF_MERGE", 0
+        dd 0x20	
+        db "SHF_STRINGS", 0
+        dd 0x40	
+        db "SHF_INFO_LINK", 0	
+        dd 0x80	
+        db "SHF_LINK_ORDER", 0	
+        dd 0x100	
+        db "SHF_OS_NONCONFORMING", 0	
+        dd 0x200	
+        db "SHF_GROUP", 0	
+        dd 0x400	
+        db  "SHF_TLS", 0	
+        dd 0x0FF00000	
+        db "SHF_MASKOS", 0	
+        dd 0xF0000000	
+        db "SHF_MASKPROC", 0	
+        dd 0x4000000
+        db "SHF_ORDERED", 0	
+        dd 0x8000000
+        db "SHF_EXCLUDE", 0
         dd -1
         
 section .bss
@@ -1216,13 +1249,82 @@ section_loop:
         ; print section type
         mov eax, [secPoint]
         mov edi, [eax + ELF32_Shdr.sh_type]
-        add ecx, SecTypeStr
+        mov ecx, SecTypeStr
         xor eax, eax
         call findInArray
+        cmp eax, -1
+        je section_type_none
+        jmp section_type_print
+
+        section_type_none:
+            mov ecx, SecTypeNoneMsg
+
+        section_type_print:
+            call printStr
 
         mov ecx, seperate
         call printStr
 
+    section_addr:
+        ; print section addr
+        mov eax, [secPoint]
+        mov eax, [eax + ELF32_Shdr.sh_addr]
+        mov esi, 8
+        call printHexNumberFixSize
+
+        mov ecx, seperate
+        call printStr
+
+    section_offset:
+        ; print section offset
+        mov eax, [secPoint]
+        mov eax, [eax + ELF32_Shdr.sh_offset]
+        mov esi, 6
+        call printHexNumberFixSize
+
+        mov ecx, seperate
+        call printStr
+
+    section_size:
+        ; print section size
+        mov eax, [secPoint]
+        mov eax, [eax + ELF32_Shdr.sh_size]
+        mov esi, 6
+        call printHexNumberFixSize
+        
+        mov ecx, seperate
+        call printStr
+
+    section_es:
+        ; print es
+        mov eax, [secPoint]
+        mov eax, [eax + ELF32_Shdr.sh_entsize]
+        mov esi, 2
+        call printHexNumberFixSize
+        
+        mov ecx, seperate
+        call printStr
+
+    section_flag:
+        ; print section flag
+        mov eax, [secPoint]
+        mov edi, [eax + ELF32_Shdr.sh_flags]
+        mov ecx, SecFlagStr
+        xor eax, eax
+        call findInArray
+
+        cmp eax, -1
+        je section_flag_none
+        jmp section_flag_print
+
+        section_flag_none:
+            mov ecx, SecFlagNoneMsg
+
+        section_flag_print:
+            call printStr
+
+        mov ecx, seperate
+        call printStr
 
 program_header:
 
@@ -1351,6 +1453,59 @@ printHexNumber:
     call decimalToHex
     mov ecx, hex
     call printStr
+    ret
+
+decimalToHexFixSize:
+    xor edi, edi
+    mov [hex], edi
+    mov [hex + 4], edi
+    mov edi, hex
+    xor ecx, ecx
+
+    dthfs_loop:
+        mov ebx, 16
+        xor edx, edx
+        div ebx
+        push edx
+        inc ecx
+        cmp eax, 0
+        je dthfs_check
+        jmp dthfs_loop
+
+    dthfs_check:
+        push ecx
+        sub esi, ecx
+        mov ecx, esi
+
+        dthfs_check_loop:
+            mov [edi], byte 0x30
+            inc edi
+            loop dthfs_check_loop
+        
+        pop ecx
+
+    dthfs_done:
+        pop edx
+        add edx, 0x30
+        cmp edx, 58
+        jae addToHexFixSize
+        jmp addToHexFixSize_done
+        
+        addToHexFixSize:
+            add edx, 39
+            
+        addToHexFixSize_done:
+            mov [edi], edx
+            inc edi
+            loop dthfs_done
+    
+    ret
+
+printHexNumberFixSize:
+    call decimalToHexFixSize
+    mov ecx, hex
+    call printStr
+    ret
 
 decimalToString:
     xor edi, edi
