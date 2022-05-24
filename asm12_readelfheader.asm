@@ -1,4 +1,7 @@
 ; Compile with nasm32 and ld linker
+; nasm -f elf -g -F dwarf -o asm12_readelfheader.o asm12_readelfheader.asm
+; ld -m elf_i386 -o asm12_readelfheader asm12_readelfheader.o
+; ./asm12_readelfheader test
 
 SYS_EXIT    equ 1
 SYS_READ    equ 3
