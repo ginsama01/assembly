@@ -1,4 +1,7 @@
 ; Compile with nasm32 and ld linker
+; nasm -f elf -g -F dwarf -o asm12_readelfheader.o asm12_readelfheader.asm
+; ld -m elf_i386 -o asm12_readelfheader asm12_readelfheader.o
+; ./asm12_readelfheader test
 
 SYS_EXIT    equ 1
 SYS_READ    equ 3
@@ -271,8 +274,10 @@ section .data
     SecHeaderMsg        db  "Section Headers:", 0xA, 0x0
     SectionStr	db '  [Nr] | Name | Type | Addr | Off | Size | ES | Flg | Lk | Inf | Al', 0xA, 0
     SecTypeNoneMsg      db  "INVALID", 0x0
-    SecFlagNoneMsg      db  " ", 0x0
+
+    ProgramHeaderMsg    db  "Program Headers:", 0xA, 0x0
     ProgramStr	db '  Type | Offset | VirtAddr | PhysAddr | FileSiz | MemSiz | Flg | Align', 0xA, 0
+    ProgramTypeNoneMsg  db  "INVALID", 0x0
 
     ElfOSABIStr:
         dd 0
@@ -736,35 +741,43 @@ section .data
         db "SHT_LOOS", 0
         dd -1
 
-    SecFlagStr:
-        dd 0x1	
-        db "SHF_WRITE", 0
-        dd 0x2	
-        db "SHF_ALLOC", 0
-        dd 0x4	
-        db "SHF_EXECINSTR", 0
-        dd 0x10	
-        db "SHF_MERGE", 0
-        dd 0x20	
-        db "SHF_STRINGS", 0
-        dd 0x40	
-        db "SHF_INFO_LINK", 0	
-        dd 0x80	
-        db "SHF_LINK_ORDER", 0	
-        dd 0x100	
-        db "SHF_OS_NONCONFORMING", 0	
-        dd 0x200	
-        db "SHF_GROUP", 0	
-        dd 0x400	
-        db  "SHF_TLS", 0	
-        dd 0x0FF00000	
-        db "SHF_MASKOS", 0	
-        dd 0xF0000000	
-        db "SHF_MASKPROC", 0	
-        dd 0x4000000
-        db "SHF_ORDERED", 0	
-        dd 0x8000000
-        db "SHF_EXCLUDE", 0
+    ProgramTypeStr:
+        dd 0x00000000
+        db "PT_NULL", 0
+        dd 0x00000001
+        db "PT_LOAD", 0
+        dd 0x00000002
+        db "PT_DYNAMIC", 0
+        dd 0x00000003
+        db "PT_INTERP", 0
+        dd 0x00000004
+        db "PT_NOTE", 0
+        dd 0x00000005
+        db "PT_SHLIB", 0
+        dd 0x00000006
+        db "PT_PHDR", 0
+        dd 0x00000007
+        db "PT_TLS", 0
+        dd 0x60000000
+        db "PT_LOOS", 0
+        dd 0x6FFFFFFF
+        db "PT_HIOS", 0
+        dd 0x70000000
+        db "PT_LOPROC", 0
+        dd 0x6474e551
+        db 'PT_GNU_STACK', 0
+        dd 0x6474e552
+        db 'PT_GNU_RELRO', 0
+        dd 0x6474e553
+        db 'PT_GNU_PROPERTY', 0
+        dd 0x65041580
+        db 'PT_PAX_FLAGS', 0
+        dd 0x6ffffffa
+        db 'PT_LOSUNW', 0
+        dd 0x6ffffffa      
+        db 'PT_SUNWBSS', 0
+        dd 0x6ffffffb      
+        db 'PT_SUNWSTACK', 0
         dd -1
         
 section .bss
@@ -774,13 +787,20 @@ section .bss
     file            resb 1000000
     hex             resb 8
     numstr          resb 12
-    
+    tmp             resb 4
+
     sectionHdr      resb 4
     secPoint        resb 4
     shentsize       resb 2
     shnum           resb 2
     shstrtab        resb 4
-    tmp             resb 4
+
+    programHdr      resb 4
+    programPoint    resb 4
+    phentsize       resb 2
+    phnum           resb 2
+
+    
 
 struc STAT
     .st_dev         resb 8
@@ -838,6 +858,17 @@ struc ELF32_Shdr;
     .sh_entsize     resd 1
 endstruc
 
+struc ELF32_Phdr
+    .p_type         resd 1
+    .p_offset       resd 1
+    .p_vaddr        resd 1
+    .p_paddr        resd 1
+    .p_filesz       resd 1
+    .p_memsz        resd 1
+    .p_flags        resd 1
+    .p_align        resd 1
+endstruc
+
 section .text
     global _start
 
@@ -845,10 +876,17 @@ _start:
     pop ecx ; Return address
     pop ecx ; argc
     pop ecx ; argv 
-    mov ecx, [ecx]
+    xor esi, esi
+    
 
+get_argv:
+    mov ebx, [ecx + esi]
+    mov [filename + esi], ebx
+    add esi, 4
+    cmp ebx, 0
+    jne get_argv
+    
     ; open file
-    mov [filename], ecx
     mov eax, SYS_OPEN
     mov ebx, filename
     mov ecx, 2
@@ -870,18 +908,12 @@ _start:
     mov edx, [stat + STAT.st_size]
     int 0x80
 
-    ; mov eax, SYS_WRITE
-    ; mov ebx, STDOUT
-    ; mov ecx, file
-    ; mov edx, [stat + STAT.st_size]
-    ; int 0x80
-
     ; check elf file
     mov eax, [file]
     cmp eax, 0x464c457f
     jne exit
 
-    ;-------------------------------------------------------------------------
+;-------------------------------------------------------------------------
     ; print elf header
     mov ecx, ElfHeaderMsg
     call printStr
@@ -1308,25 +1340,178 @@ section_loop:
     section_flag:
         ; print section flag
         mov eax, [secPoint]
-        mov edi, [eax + ELF32_Shdr.sh_flags]
-        mov ecx, SecFlagStr
-        xor eax, eax
-        call findInArray
+        mov eax, [eax + ELF32_Shdr.sh_flags]
+        mov esi, 8
+        call printHexNumberFixSize
+        
+        mov ecx, seperate
+        call printStr
 
-        cmp eax, -1
-        je section_flag_none
-        jmp section_flag_print
-
-        section_flag_none:
-            mov ecx, SecFlagNoneMsg
-
-        section_flag_print:
-            call printStr
+    section_link:
+        ; print section link
+        mov eax, [secPoint]
+        mov eax, [eax + ELF32_Shdr.sh_link]
+        call printNumber
 
         mov ecx, seperate
         call printStr
 
+    section_info:
+        ; print section info
+        mov eax, [secPoint]
+        mov eax, [eax + ELF32_Shdr.sh_info]
+        call printNumber
+
+        mov ecx, seperate
+        call printStr
+
+    section_al:
+        ; print section align
+        mov eax, [secPoint]
+        mov eax, [eax + ELF32_Shdr.sh_addralign]
+        call printNumber
+
+        mov ecx, newline
+        call printStr
+
+    ; next section
+    inc dword [tmp]
+    jmp section_loop
+
+;-------------------------------------------------------------------------
 program_header:
+    ; print program header
+    mov ecx, newline
+    call printStr
+
+    mov ecx, ProgramHeaderMsg
+    call printStr
+
+    mov ecx, ProgramStr
+    call printStr
+
+    mov eax, [file + ELF32_Ehdr.e_phoff]
+    mov ebx, file
+    add ebx, eax
+    mov [programHdr], ebx
+
+    mov ax, [file + ELF32_Ehdr.e_phentsize]
+    mov [phentsize], ax
+
+    mov ax, [file + ELF32_Ehdr.e_phnum]
+    mov [phnum], ax
+
+    mov dword [tmp], 0
+
+program_loop:
+    xor eax, eax
+    mov ax, [phnum]
+    cmp dword [tmp], eax
+    jae exit
+
+    mov eax, [tmp]
+    mov bx, word [phentsize]
+    mul bx
+    add eax, [programHdr]
+    mov [programPoint], eax
+
+    mov ecx, faketab
+    call printStr
+
+    program_type:
+        ; print program type
+        mov eax, [programPoint]
+        mov edi, [eax + ELF32_Phdr.p_type]
+        mov ecx, ProgramTypeStr
+        xor eax, eax
+        call findInArray
+
+        cmp eax, -1
+        je program_type_none
+        jmp program_type_print
+
+        program_type_none:
+            mov ecx, ProgramTypeNoneMsg
+
+        program_type_print:
+            call printStr
+    
+        mov ecx, seperate
+        call printStr
+
+    program_offset:
+        ; print program offset
+        mov eax, [programPoint]
+        mov eax, [eax + ELF32_Phdr.p_offset]
+        mov esi, 6
+        call printHexNumberFixSizex
+
+        mov ecx, seperate
+        call printStr
+
+    program_virtual:
+        ; print program virtual address
+        mov eax, [programPoint]
+        mov eax, [eax + ELF32_Phdr.p_vaddr]
+        mov esi, 8
+        call printHexNumberFixSizex
+
+        mov ecx, seperate
+        call printStr
+
+    program_physical:
+        ; print program physical address
+        mov eax, [programPoint]
+        mov eax, [eax + ELF32_Phdr.p_paddr]
+        mov esi, 8
+        call printHexNumberFixSizex
+
+        mov ecx, seperate
+        call printStr
+
+    program_filesize:
+        ; print program file size
+        mov eax, [programPoint]
+        mov eax, [eax + ELF32_Phdr.p_filesz]
+        mov esi, 5
+        call printHexNumberFixSizex
+
+        mov ecx, seperate
+        call printStr
+
+    program_memsize:
+        ; print program memory size
+        mov eax, [programPoint]
+        mov eax, [eax + ELF32_Phdr.p_memsz]
+        mov esi, 5
+        call printHexNumberFixSizex
+
+        mov ecx, seperate
+        call printStr
+
+    program_flag:
+        ; print program flags
+        mov eax, [programPoint]
+        mov eax, [eax + ELF32_Phdr.p_flags]
+        mov esi, 8
+        call printHexNumberFixSizex
+
+        mov ecx, seperate
+        call printStr
+
+    program_algin:
+        ; print program align
+        mov eax, [programPoint]
+        mov eax, [eax + ELF32_Phdr.p_align]
+        mov esi, 4
+        call printHexNumberFixSizex
+
+        mov ecx, newline
+        call printStr
+
+    ; next program header
+    inc dword [tmp]
+    jmp program_loop
 
 exit:
     mov eax, SYS_EXIT
@@ -1461,7 +1646,19 @@ decimalToHexFixSize:
     mov [hex + 4], edi
     mov edi, hex
     xor ecx, ecx
+    jmp dthfs_loop
 
+decimalToHexFixSizex:
+    xor edi, edi
+    mov [hex], edi
+    mov [hex + 4], edi
+    mov edi, hex
+    mov [edi], byte 0x30
+    inc edi
+    mov [edi], byte 0x78
+    inc edi
+    xor ecx, ecx
+    
     dthfs_loop:
         mov ebx, 16
         xor edx, edx
@@ -1476,13 +1673,16 @@ decimalToHexFixSize:
         push ecx
         sub esi, ecx
         mov ecx, esi
+        cmp ecx, 0
+        je dthfs_check_end
 
         dthfs_check_loop:
             mov [edi], byte 0x30
             inc edi
             loop dthfs_check_loop
         
-        pop ecx
+        dthfs_check_end:
+            pop ecx
 
     dthfs_done:
         pop edx
@@ -1503,6 +1703,12 @@ decimalToHexFixSize:
 
 printHexNumberFixSize:
     call decimalToHexFixSize
+    mov ecx, hex
+    call printStr
+    ret
+
+printHexNumberFixSizex:
+    call decimalToHexFixSizex
     mov ecx, hex
     call printStr
     ret
