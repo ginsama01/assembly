@@ -1,3 +1,5 @@
+; nasm -f elf64 -g -F dwarf -o asm17_antinetcat.o asm17_antinetcat.asm
+; ld -o asm17_antinetcat asm17_antinetcat.o
 O_RDONLY            equ 0
 SYS_OPEN            equ 2
 SYS_CLOSE           equ 3
@@ -52,7 +54,7 @@ _start:
     mov rbp, rsp
 
 after_sleep:
-    ; open folder
+    ; open folder /proc
     mov rdi, filename
     mov rsi, O_RDONLY
     xor rdx, rdx
@@ -71,6 +73,7 @@ after_sleep:
     xor rcx, rcx
     
 file_loop:
+    ; read file in /proc/
     lea rsi, [dirent + rcx + LINUX_DIRENT64.d_name]
     mov al, byte [rsi]
     push rcx
@@ -84,6 +87,7 @@ file_loop:
 
     loop_continue:
         pop rcx
+        ; next DIRENT
         movzx rax, word [dirent + rcx + LINUX_DIRENT64.d_reclen]
         add rcx, rax
         cmp rcx, qword [nread]
@@ -91,6 +95,7 @@ file_loop:
         jmp file_loop
 
 sleep:
+    ; sleep for 10 seconds
     mov dword [sleeptime + timespec.tv_sec], 10
     mov dword [sleeptime + timespec.tv_nsec], 0
     mov rdi, sleeptime
@@ -113,6 +118,7 @@ check_pid:
     push rbp
     mov rbp, rsp
     
+    ; check file /proc/:pid/cmdline
     mov rcx, qword [rsi]
     mov [pid], rcx
     mov qword [pidfile], 0
@@ -157,6 +163,7 @@ check_pid:
         mov rax, SYS_CLOSE
         syscall
 
+        ; if it starts with "nc", it's netcat process.
         cmp word [pidcmd], "nc"
         jne check_done
         mov rsi, pid
@@ -168,6 +175,7 @@ check_pid:
         call stringToDecimal
         mov qword [num], rax
 
+        ; kill process
         mov rdi, qword [num]
         mov rsi, SIGKILL
         mov rax, SYS_KILL
