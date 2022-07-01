@@ -89,6 +89,7 @@ string_to_decimal:
         je std_done
         cmp cl, 0xA     ; Check if enter character
         je std_done
+        sub cl, 0x30
 
         ; rax = rax * 10 + rcx
         push rcx    ; push rcx value to stack

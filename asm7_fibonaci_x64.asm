@@ -1,20 +1,15 @@
-SYS_EXIT    equ 1
-SYS_READ    equ 3
-SYS_WRITE   equ 4
-STDIN       equ 0
-STDOUT      equ 1
+%include 'io_x64.asm'
+SYS_EXIT 	equ 0x3c
+
 
 section .data
-    msg1    db  "Enter n ", 0xA, 0xD
+    msg1    db  "Enter n ", 0xA, 0x0
     first_fibo  db "0 ", 0x0
-    second_fibo db "1 ", 0x0
-    space   db " "
+    second_fibo db "1", 0x0
+    space   db " ", 0x0
 
 section .bss
     n           resb 8
-    num1        resb 100
-    num2        resb 100
-    sum         resb 100
 
 section .text
     global _start
@@ -49,6 +44,7 @@ _start:
     call printStr
 
     ; calculate fibonacci and print
+    mov rdi, [n]
     call cal_fibo
 
 exit:
@@ -58,163 +54,225 @@ exit:
 
 
 ; Calculate fibonacci and print
+; Input: 
+;   %rdi: int - n-th fibonacci
+; Output: none
 cal_fibo:
-    mov rdx, [n]
-    cmp rdx, 3
+    push rbp
+    mov rbp, rsp
+    ; for local variable
+    sub rsp, 90
+    %define num1    rbp - 30
+    %define num2    rbp - 60
+    %define sum     rbp - 90
+
+    ; compare if n >= 3
+    mov r8, rdi
+    cmp r8, 3
     jb cal_done
 
     ; Have printed first and second fibo
-    dec rdx
-    dec rdx
-    ; fibo[n-1]
-    mov eax, 31h
-    mov [num1], eax
+    dec r8
+    dec r8
+
+    ; init fibo[n-1]
+    mov qword [num2], 31h
     ; fibo[n-2]
-    mov [num2], eax
+    mov qword [num1], 30h
     
     
     cal_loop:
-        
-        xor esi, esi
-        xor eax, eax
-        call find_num1_digit
-        
-        xor edi, edi
-        xor eax, eax
-        call find_num2_digit
-
-        mov ebx, 0
-        mov [sum], ebx
-        mov ebx, sum
+        lea rdi, [num1]
+        lea rsi, [num2]
+        lea rdx, [sum]
         call calculate_sum
        
-        push edx
-        ; move num1 to num2
-        mov edx, num1
-        xor ecx, ecx
-        mov [num2], ecx
-        mov ecx, num2
-        call move
+        ; print fibonacci
+        mov rdi, space
+        call printStr
 
-        ; move num2 to sum
-        mov edx, sum
-        xor ecx, ecx
-        mov [num1], ecx
-        mov ecx, num1
-        call move
-
-        mov eax, SYS_WRITE
-        mov ebx, STDOUT
-        mov ecx, space
-        mov edx, 1
-        int 0x80
-
-        mov eax, SYS_WRITE
-        mov ebx, STDOUT
-        mov ecx, sum
-        mov edx, 100
-        int 0x80
-        pop edx
+        lea rdi, [sum]
+        call printStr
         
-        dec edx
-        cmp edx, 0
+        ; num1 = num2
+        lea rdi, [num2]
+        lea rsi, [num1]
+        call move
+
+        ; num2 = sum
+        lea rdi, [sum]
+        lea rsi, [num2]
+        call move
+        
+        ; check how many fibo need to calculate
+        dec r8
+        cmp r8, 0
         je cal_done
         jmp cal_loop
 
 
     cal_done: 
+        add rsp, 90
+        mov rsp, rbp
+        pop rbp
         ret
 
-; ecx = edx
+; Move from offset to offset
+; Input:
+;   %rdi: first offset
+;   %rsi: second offset = first offset
+; Output: none
 move:
+    push rbp
+    mov rbp, rsp
+    
     loop_move:
-        xor eax, eax
-        mov al, [edx]
+        xor rax, rax
+        mov al, [rdi]
         cmp al, 0x0
         je done_move
         cmp al, 0xA
         je done_move
-        mov [ecx], al
-        inc ecx
-        inc edx
+        mov [rsi], al
+        inc rdi
+        inc rsi
         jmp loop_move
 
     done_move:
+        mov byte [rsi], 0x0
+        mov rsp, rbp
+        pop rbp
         ret
 
 
+; Calculate sum of two string number
+; Input:
+;   %rdi: char* - first number
+;   %rsi: char* - second number
+;   %rdx: char* - will store sum
+; Output:
+;   none
 calculate_sum:
-    xor eax, eax
-    xor ecx, ecx
-    clc
+    push rbp
+    mov rbp, rsp
+    ; parameter
+    %define num1 rbp + 16
+    %define num2 rbp + 46
+    
+    ; num1 = rdi
+    mov r9, rsi
+    lea rsi, [num1]
+    call move
+
+    ; num2 = r9
+    mov rdi, r9
+    lea rsi, [num2]
+    call move
+
+    ; calculate length of two string number
+    lea rdi, [num1]
+    call strlen
+    mov rsi, rax    ; store length of first number to rsi
+
+    lea rdi, [num2]
+    call strlen
+    mov rdi, rax    ; store length of second number to rdi
+
+    xor rax, rax
+    xor rcx, rcx
+    xor r9, r9      ; r9 for carry
 
     add_loop:
-        pushf
-        cmp esi, 0
+        ; if length of first number = 0
+        cmp rsi, 0
         je add_case1
-        cmp edi, 0
+        ; if length of second number = 0
+        cmp rdi, 0
         je add_case2
-        popf
-        dec esi
-        dec edi
-        mov al, [num1 + esi]
-        adc al, [num2 + edi]
-        aaa
-        pushf
-        or al, 30h
-        popf
-        push eax
-        inc ecx
+
+        ; get digit
+        dec rsi
+        dec rdi
+        mov al, [num1 + rsi]
+        sub al, 0x30
+        mov bl, [num2 + rdi]
+        sub bl, 0x30
+        add al, bl
+        add rax, r9  ; add carry
+        cmp al, 10
+        jae add_loop_carry
+        xor r9, r9  ; set carry = 0
+        jmp add_loop_continue
+
+    add_loop_carry:
+        mov r9, 1   ; set carry = 1
+        sub al, 10
+
+    add_loop_continue:
+        add al, 0x30
+        push rax
+        inc rcx
         jmp add_loop
 
     add_case1:
-        popf
-        case1:
-            pushf
-            cmp edi, 0
-            je check_carry
-            popf
-            dec edi
-            mov al, [num2 + edi]
-            adc al, 30h
-            aaa
-            or al, 30h
-            push eax
-            inc ecx
-            jmp case1
+        cmp rdi, 0
+        je check_carry
+        dec rdi
+        mov al, [num2 + rdi]
+        sub al, 0x30
+        add rax, r9  ; add carry
+        cmp al, 10
+        jae add_case1_carry
+        xor r9, r9  ; set carry = 0
+        jmp add_case1_continue
+
+    add_case1_carry:
+        mov r9, 1   ; set carry = 1
+        sub al, 10
+
+    add_case1_continue:
+        add al, 0x30
+        push rax
+        inc rcx
+        jmp add_case1
 
     add_case2:
-        popf
-        case2:
-            pushf
-            cmp esi, 0
-            je check_carry
-            popf
-            dec esi
-            mov al, [num1 + esi]
-            adc al, 30h
-            aaa
-            pushf
-            or al, 30h
-            popf
-            push eax
-            inc ecx
-            jmp case2
+        cmp rsi, 0
+        je check_carry
+        dec rsi
+        mov al, [num1 + rsi]
+        sub al, 0x30
+        add rax, r9  ; add carry
+        cmp al, 10
+        jae add_case2_carry
+        xor r9, r9  ; set carry = 0
+        jmp add_case2_continue
+
+    add_case2_carry:
+        mov r9, 1   ; set carry = 1
+        sub al, 10
+
+    add_case2_continue:
+        add al, 0x30
+        push rax
+        inc rcx
+        jmp add_case2
 
     check_carry:
-        popf
-        jc add_carry
-        jmp create_sum
+        cmp r9, 1   ; if carry = 1
+        jb create_sum
 
     add_carry:
         mov al, 31h
-        push eax
-        inc ecx
+        push rax
+        inc rcx
 
     create_sum:
-        pop eax
-        mov [ebx], al
-        inc ebx
+        pop rax
+        mov [rdx], al
+        inc rdx
         loop create_sum
 
+    mov rsp, rbp
+    pop rbp
     ret    
