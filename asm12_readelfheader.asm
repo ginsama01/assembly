@@ -829,44 +829,50 @@ struc e_ident
 endstruc
 
 struc ELF32_Ehdr
-    .e_ident        resb 16
-    .e_type         resw 1
-    .e_machine      resw 1
-    .e_version      resd 1
-    .e_entry        resd 1
-    .e_phoff        resd 1
-    .e_shoff        resd 1
-    .e_flags        resd 1
-    .e_ehsize       resw 1
-    .e_phentsize    resw 1
-    .e_phnum        resw 1
-    .e_shentsize    resw 1
-    .e_shnum        resw 1
-    .e_shstrndx     resw 1
+    .e_ident        resb 16 
+    .e_type         resw 1  ; Identifies object file type.
+    .e_machine      resw 1  ; Specifies target instruction set architecture. // Kien truc tap lenh
+    .e_version      resd 1  ; Set to 1 for the original version of ELF.
+    .e_entry        resd 1  ; This is the memory address of the entry point from where the process starts executing.
+    .e_phoff        resd 1  ; Points to the start of the program header table
+    .e_shoff        resd 1  ; Points to the start of the section header table.
+    .e_flags        resd 1   
+    .e_ehsize       resw 1  ; Contains the size of this header,
+    .e_phentsize    resw 1  ; Contains the size of a program header table entry.
+    .e_phnum        resw 1  ; Contains the number of entries in the program header table.
+    .e_shentsize    resw 1  ; Contains the size of a section header table entry.
+    .e_shnum        resw 1  ; Contains the number of entries in the section header table.
+    .e_shstrndx     resw 1  ; Contains index of the section header table entry that contains the section names.
 endstruc
 
+; section table giữ thông tin về các section của file ELF trên đĩa
 struc ELF32_Shdr;
-    .sh_name        resd 1
-    .sh_type        resd 1
-    .sh_flags       resd 1
-    .sh_addr        resd 1
-    .sh_offset      resd 1
-    .sh_size        resd 1
-    .sh_link        resd 1
-    .sh_info        resd 1
-    .sh_addralign   resd 1
-    .sh_entsize     resd 1
+    .sh_name        resd 1  ; An offset to a string in the .shstrtab section that represents the name of this section.
+    .sh_type        resd 1  ; Identifies the type of this header.
+    .sh_flags       resd 1  ; Identifies the attributes of the section.
+    .sh_addr        resd 1  ; Virtual address of the section in memory, for sections that are loaded.
+    .sh_offset      resd 1  ; Offset of the section in the file image.
+    .sh_size        resd 1  ; Size in bytes of the section in the file image.
+    .sh_link        resd 1  ; Contains the section index of an associated section
+    .sh_info        resd 1  ; Contains extra information about the section. 
+    .sh_addralign   resd 1  ; Contains the required alignment of the section.
+    .sh_entsize     resd 1  ; Contains the size, in bytes, of each entry, for sections that contain fixed-size entries. 
 endstruc
 
+; An executable or shared object file's program header table is an array of structures, 
+; each describing a segment or other information that the system needs to prepare the 
+; program for execution. Program headers are meaningful only for executable and shared object files.
+; It is found at file offset e_phoff, and consists of e_phnum entries, each with size e_phentsize.
+; cách copy các section từ ổ đĩa vào bộ nhớ khi thực thi
 struc ELF32_Phdr
-    .p_type         resd 1
-    .p_offset       resd 1
-    .p_vaddr        resd 1
-    .p_paddr        resd 1
-    .p_filesz       resd 1
-    .p_memsz        resd 1
-    .p_flags        resd 1
-    .p_align        resd 1
+    .p_type         resd 1  ; Identifies the type of the segment.
+    .p_offset       resd 1  ; Offset of the segment in the file image.
+    .p_vaddr        resd 1  ; Virtual address of the segment in memory.
+    .p_paddr        resd 1  ; On systems where physical address is relevant, reserved for segment's physical address.
+    .p_filesz       resd 1  ; Size in bytes of the segment in the file image.
+    .p_memsz        resd 1  ; Size in bytes of the segment in memory.
+    .p_flags        resd 1  ; Segment-dependent flags 
+    .p_align        resd 1  
 endstruc
 
 section .text
